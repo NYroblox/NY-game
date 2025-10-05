@@ -2608,8 +2608,7 @@ local function CreateSimpleGui()
     TimeDisplay.TextSize = 50.000
     TimeDisplay.TextStrokeTransparency = 0.000
     TimeDisplay.TextWrapped = true
-    TimeDisplay.Active = true
-    TimeDisplay.Draggable = true
+    -- 删除了 Active 和 Draggable 属性
 
     UITextSizeConstraint.Parent = TimeDisplay
     UITextSizeConstraint.MaxTextSize = 24
@@ -2674,6 +2673,7 @@ end
 -- 初始化显示状态
 TIMERGUI(_G.Settings.TimeBool)
 
+print("简化游戏时间显示系统已加载")
 print("简化游戏时间显示系统已加载")
 --自动喊话--
 local Players = game:GetService("Players")

@@ -365,12 +365,6 @@ local nightVisionEnabled = false
 local flareGunEspEnabled = false  -- 信号枪透视开关
 local airdropEspEnabled = false   -- 空投透视开关
 
--- 速度控制变量 - 默认关闭
-local TARGET_SPEED = 24.8
-local isSpeedBoostEnabled = false
-local currentHumanoid = nil
-local speedMaintainConnection = nil
-
 -- 地点标记变量 - 默认关闭
 local isLocationMarkersEnabled = false
 local markerPositions = {
@@ -561,76 +555,116 @@ end
 -- 初始化地点标记
 createAllMarkers()
 
--- ===== 速度控制功能 =====
-local function maintainSpeed()
-    if currentHumanoid and currentHumanoid:IsDescendantOf(workspace) then
-        currentHumanoid.WalkSpeed = TARGET_SPEED
-    end
-end
+-- ===== 体力控制功能 =====
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
 
-local function setupSpeedMaintenance()
-    if speedMaintainConnection then
-        speedMaintainConnection:Disconnect()
-        speedMaintainConnection = nil
-    end
-    
-    if isSpeedBoostEnabled then
-        speedMaintainConnection = RunService.Heartbeat:Connect(function()
-            maintainSpeed()
-        end)
-    end
-end
+-- 获取玩家对象
+local speaker = Players.LocalPlayer
+local playerGui = speaker:WaitForChild("PlayerGui")
 
-local function initializeCharacter(character)
-    local humanoid = character:WaitForChild("Humanoid")
-    currentHumanoid = humanoid
-    
-    if isSpeedBoostEnabled then
-        maintainSpeed()
-        setupSpeedMaintenance()
-    end
-    
-    humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-        if isSpeedBoostEnabled then
-            maintainSpeed()
-        end
-    end)
-end
+-- 存储已处理的模块和原始函数
+local M_Hs = {}
+local originalFunctions = {} -- 存储原始函数
+local eventConnections = {} -- 存储事件连接状态
+local isStaminaEnabled = false -- 初始状态为关闭
 
-local function toggleSpeedBoost()
-    isSpeedBoostEnabled = not isSpeedBoostEnabled
-    
-    if isSpeedBoostEnabled then
-        if currentHumanoid and currentHumanoid:IsDescendantOf(workspace) then
-            maintainSpeed()
-            setupSpeedMaintenance()
+-- 无限体力功能函数
+local function INFINITESTAMINA(bool)
+    if bool == true then
+        if (getconnections and getloadedmodules and hookfunction) then
+            -- 存储原始事件连接状态
+            if #eventConnections == 0 then
+                for i,v in ipairs(getconnections(ReplicatedStorage.TKSMNA.Event)) do
+                    table.insert(eventConnections, {
+                        connection = v,
+                        originalState = v.State
+                    })
+                    if v.State then
+                        v:Disable()
+                    end
+                end
+            else
+                -- 如果已经存储过，直接禁用
+                for i,connInfo in ipairs(eventConnections) do
+                    if connInfo.connection.State then
+                        connInfo.connection:Disable()
+                    end
+                end
+            end
+
+            -- 钩取体力模块函数
+            for i,v in ipairs(getloadedmodules()) do
+                if v.Name == "M_H" and not M_Hs[v] then
+                    local module = require(v)
+                    M_Hs[v] = module
+                    
+                    -- 存储原始函数
+                    if not originalFunctions[v] then
+                        originalFunctions[v] = module.TakeStamina
+                    end
+                    
+                    -- 钩取函数
+                    local old = originalFunctions[v]
+                    module.TakeStamina = function(smth, amount)
+                        if amount > 0 then 
+                            return old(smth, -2) -- 将体力消耗转为恢复
+                        end
+                        return old(smth, amount)
+                    end
+                end
+            end
+            print("无限体力功能已开启")
+        else
+            warn("无限体力: 你的Exploit不支持此功能 [缺少函数: getconnections, getloadedmodules, hookfunction]")
         end
     else
-        if currentHumanoid and currentHumanoid:IsDescendantOf(workspace) then
-            currentHumanoid.WalkSpeed = 16
+        -- 关闭无限体力 - 完全恢复原状
+        if getconnections then
+            -- 恢复事件连接
+            for i,connInfo in ipairs(eventConnections) do
+                if connInfo.originalState and not connInfo.connection.State then
+                    connInfo.connection:Enable()
+                end
+            end
+            
+            -- 恢复原始函数
+            for module, originalFunc in pairs(originalFunctions) do
+                if M_Hs[module] then
+                    M_Hs[module].TakeStamina = originalFunc
+                end
+            end
+            
+            -- 清空记录
+            eventConnections = {}
+            M_Hs = {}
+            
+            print("无限体力功能已完全关闭")
+        else
+            warn("无限体力: 你的Exploit不支持此功能 [缺少函数: getconnections]")
         end
-        
-        if speedMaintainConnection then
-            speedMaintainConnection:Disconnect()
-            speedMaintainConnection = nil
-        end
+    end
+end
+
+-- 切换体力功能
+local function toggleStamina()
+    isStaminaEnabled = not isStaminaEnabled
+    
+    if isStaminaEnabled then
+        INFINITESTAMINA(true)  -- 开启无限体力
+    else
+        INFINITESTAMINA(false) -- 关闭无限体力
     end
     
-    return isSpeedBoostEnabled
+    return isStaminaEnabled
 end
 
--- 初始化角色速度控制
-if LocalPlayer.Character then
-    initializeCharacter(LocalPlayer.Character)
-end
-
-LocalPlayer.CharacterAdded:Connect(initializeCharacter)
-LocalPlayer.CharacterRemoving:Connect(function()
-    if speedMaintainConnection then
-        speedMaintainConnection:Disconnect()
-        speedMaintainConnection = nil
+-- 玩家离开游戏时自动清理
+Players.PlayerRemoving:Connect(function(player)
+    if player == speaker then
+        INFINITESTAMINA(false) -- 确保离开时关闭功能
     end
-    currentHumanoid = nil
 end)
 
 -- ===== ESP 功能函数 =====
@@ -1972,11 +2006,28 @@ local function createCircularMenu()
     buttonCorner4.CornerRadius = UDim.new(0.2, 0)
     buttonCorner4.Parent = flareGunEspButton
     
+    -- 创建体力控制按钮（右侧）
+    local staminaToggleButton = Instance.new("TextButton")
+    staminaToggleButton.Name = "StaminaToggleButton"
+    staminaToggleButton.Size = UDim2.new(1, 0, 0, 30)
+    staminaToggleButton.Position = UDim2.new(0, 0, 0, 0)
+    staminaToggleButton.BackgroundColor3 = isStaminaEnabled and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(100, 100, 100)
+    staminaToggleButton.Text = isStaminaEnabled and "无限体力开启" or "无限体力关闭"
+    staminaToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+    staminaToggleButton.TextSize = 14
+    staminaToggleButton.Font = Enum.Font.SourceSansBold
+    staminaToggleButton.AutoButtonColor = true
+    staminaToggleButton.ZIndex = 3
+    
+    local buttonCorner5 = Instance.new("UICorner")
+    buttonCorner5.CornerRadius = UDim.new(0.2, 0)
+    buttonCorner5.Parent = staminaToggleButton
+    
     -- 创建夜视开关按钮（右侧）
     local nightVisionToggleButton = Instance.new("TextButton")
     nightVisionToggleButton.Name = "NightVisionToggleButton"
     nightVisionToggleButton.Size = UDim2.new(1, 0, 0, 30)
-    nightVisionToggleButton.Position = UDim2.new(0, 0, 0, 0)
+    nightVisionToggleButton.Position = UDim2.new(0, 0, 0, 40)
     nightVisionToggleButton.BackgroundColor3 = nightVisionEnabled and Color3.fromRGB(50, 200, 200) or Color3.fromRGB(100, 100, 100)
     nightVisionToggleButton.Text = nightVisionEnabled and "夜视功能开启" or "夜视功能关闭"
     nightVisionToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -1985,26 +2036,9 @@ local function createCircularMenu()
     nightVisionToggleButton.AutoButtonColor = true
     nightVisionToggleButton.ZIndex = 3
     
-    local buttonCorner5 = Instance.new("UICorner")
-    buttonCorner5.CornerRadius = UDim.new(0.2, 0)
-    buttonCorner5.Parent = nightVisionToggleButton
-    
-    -- 创建速度控制按钮（右侧）
-    local speedToggleButton = Instance.new("TextButton")
-    speedToggleButton.Name = "SpeedToggleButton"
-    speedToggleButton.Size = UDim2.new(1, 0, 0, 30)
-    speedToggleButton.Position = UDim2.new(0, 0, 0, 40)
-    speedToggleButton.BackgroundColor3 = isSpeedBoostEnabled and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(100, 100, 100)
-    speedToggleButton.Text = isSpeedBoostEnabled and "速度提升开启" or "速度提升关闭"
-    speedToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    speedToggleButton.TextSize = 14
-    speedToggleButton.Font = Enum.Font.SourceSansBold
-    speedToggleButton.AutoButtonColor = true
-    speedToggleButton.ZIndex = 3
-    
     local buttonCorner6 = Instance.new("UICorner")
     buttonCorner6.CornerRadius = UDim.new(0.2, 0)
-    buttonCorner6.Parent = speedToggleButton
+    buttonCorner6.Parent = nightVisionToggleButton
     
     -- 创建地点标记按钮（右侧）
     local locationMarkersButton = Instance.new("TextButton")
@@ -2046,8 +2080,8 @@ local function createCircularMenu()
     trashEspButton.Parent = leftColumn
     flareGunEspButton.Parent = leftColumn
     
+    staminaToggleButton.Parent = rightColumn
     nightVisionToggleButton.Parent = rightColumn
-    speedToggleButton.Parent = rightColumn
     locationMarkersButton.Parent = rightColumn
     airdropEspButton.Parent = rightColumn -- 添加到右侧
     
@@ -2192,20 +2226,20 @@ local function createCircularMenu()
         end
     end)
     
+    -- 体力控制按钮点击事件
+    staminaToggleButton.MouseButton1Click:Connect(function()
+        local newState = toggleStamina()
+        
+        staminaToggleButton.BackgroundColor3 = newState and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(100, 100, 100)
+        staminaToggleButton.Text = newState and "无限体力开启" or "无限体力关闭"
+    end)
+    
     -- 夜视按钮点击事件
     nightVisionToggleButton.MouseButton1Click:Connect(function()
         local newState = toggleNightVision()
         
         nightVisionToggleButton.BackgroundColor3 = newState and Color3.fromRGB(50, 200, 200) or Color3.fromRGB(100, 100, 100)
         nightVisionToggleButton.Text = newState and "夜视功能开启" or "夜视功能关闭"
-    end)
-    
-    -- 速度控制按钮点击事件
-    speedToggleButton.MouseButton1Click:Connect(function()
-        local newState = toggleSpeedBoost()
-        
-        speedToggleButton.BackgroundColor3 = newState and Color3.fromRGB(255, 165, 0) or Color3.fromRGB(100, 100, 100)
-        speedToggleButton.Text = newState and "速度提升开启" or "速度提升关闭"
     end)
     
     -- 地点标记按钮点击事件
@@ -2384,9 +2418,6 @@ LocalPlayer.CharacterAdded:Connect(function(newChar)
     
     -- 重新创建信号枪提示GUI
     createFlareGunNotificationGui()
-    
-    -- 重新初始化速度控制
-    initializeCharacter(newChar)
 end)
 
 -- ===== 初始化 =====
@@ -2420,9 +2451,10 @@ print("敌人ESP: " .. (enemyEspEnabled and "开启" or "关闭"))
 print("废料ESP: " .. (trashEspEnabled and "开启" or "关闭"))
 print("信号枪透视: " .. (flareGunEspEnabled and "开启" or "关闭"))
 print("空投透视: " .. (airdropEspEnabled and "开启" or "关闭"))
-print("速度提升: " .. (isSpeedBoostEnabled and "开启" or "关闭"))
+print("无限体力: " .. (isStaminaEnabled and "开启" or "关闭"))
 print("地点标记: " .. (isLocationMarkersEnabled and "开启" or "关闭"))
 print("夜视功能: " .. (nightVisionEnabled and "开启" or "关闭"))
+
 -- 完整游戏电力显示系统
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -2549,6 +2581,7 @@ end
 TIMERGUI(_G.Settings.TimeBool)
 
 print("游戏电力显示系统已加载")
+
 -- 简化游戏时间显示系统
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local HttpService = game:GetService("HttpService")
@@ -2608,7 +2641,8 @@ local function CreateSimpleGui()
     TimeDisplay.TextSize = 50.000
     TimeDisplay.TextStrokeTransparency = 0.000
     TimeDisplay.TextWrapped = true
-    -- 删除了 Active 和 Draggable 属性
+    TimeDisplay.Active = true
+    TimeDisplay.Draggable = true
 
     UITextSizeConstraint.Parent = TimeDisplay
     UITextSizeConstraint.MaxTextSize = 24
@@ -2673,7 +2707,6 @@ end
 -- 初始化显示状态
 TIMERGUI(_G.Settings.TimeBool)
 
-print("简化游戏时间显示系统已加载")
 print("简化游戏时间显示系统已加载")
 --自动喊话--
 local Players = game:GetService("Players")

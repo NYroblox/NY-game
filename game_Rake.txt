@@ -326,6 +326,7 @@ local NAME_MAPPING = {
     ["HYYNO1"] = "诺亚右护法🗡",
     ["dreamfsws"] = "鸭蛋重锤",
     ["yufc276"] = "瓦学弟😋",
+    ["vbf279"] = "希特勒",
     
     -- 敌人名称映射
     ["Rake"] = "雷克",
